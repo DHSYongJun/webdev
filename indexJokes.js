@@ -10,7 +10,7 @@ app.get('/', function(req, res) {
 });
 
 app.get('/app.js', function(req, res) {
-res.sendFile('/home/cabox/workspace/app.js')
+res.sendFile(__dirname + 'app.js')
 } );
 
 app.route("/jokes").get(function(req,res,next){
