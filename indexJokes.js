@@ -1,15 +1,26 @@
 var express = require('express');
 var bodyParser = require('body-parser');
+var mongodb = require('mongodb').MongoClient;
+var ObjectId = require('mongodb').ObjectID;
 var app = express();
 var port = 8888;
-var jokes=[{setup:"Our wedding was so beautiful,",punchline:"even the cake was in tiers"},{setup:"I'm reading a book on the history of glue",punchline:"I just can't seem to put it down"},{setup:"What do you call an Argentinian with a rubber toe?",punchline:"Roberto"}];
+var db, collection;
+
+var uri = "mongodb://" + process.env.MONGOLAB_USER + ":" + process.env.MONGOLAB_PASSWORD + "@ds023485.mlab.com:23485/webdev";
+var jokes=[{setup:"Our wedding was so beautiful,",punchline:"even the cake was in tiers", votes: 0},{setup:"I'm reading a book on the history of glue",punchline:"I just can't seem to put it down", votes: 0},{setup:"What do you call an Argentinian with a rubber toe?",punchline:"Roberto", votes: 0}];
 
 app.use(bodyParser.json());
-app.listen(process.env.PORT || port, function(){
-    console.log("Listening on " + port);
+app.use(express.static('static'));
+
+mongodb.connect(uri, function(err, database) {
+   db = database;
+   collection = db.collection('jokes');
+
+    app.listen(process.env.PORT || port, function() {
+        console.log("Listening on " + port);
+    });
 });
 
-app.use(express.static('static'));
 
 app.get('/', function(req, res) {
     res.sendFile(__dirname + '/static/index.html');
@@ -17,36 +28,84 @@ app.get('/', function(req, res) {
 
 app.get('/jokes', function(req, res) {
 
-    var randomNumber = Math.floor(Math.random() * jokes.length);
-    jokes[randomNumber].id = randomNumber;
+    collection.count(function(err, count) {
 
-    res.send(jokes[randomNumber]);
+        var randomNumber = Math.floor(Math.random() * count);
+
+        collection.find().limit(-1).skip(randomNumber).next(
+            function(err, results) {
+                res.send(results);
+            }
+        );
+    });
 });
 
-app.post('/upvote', function(req, res) {
-    console.log("Someone tried to upvote something");
-    console.log(req.body);
+app.put('/upvote', function(req, res) {
     var jokeIndex = req.body.id;
-    if (typeof jokes[jokeIndex].votes === 'undefined') {
-        console.log("Creating vote for this joke");
-        jokes[jokeIndex].votes = 0;
-    }
-
-    jokes[jokeIndex].votes++;
-
-    res.send(jokes[jokeIndex]);
+    collection.findOneAndUpdate(
+        { _id: ObjectId(jokeIndex) },
+        { $inc: { "votes" : 1 }},
+        function(err, result) {
+            result.value.votes++;
+            res.send(result.value);
+        }
+    );
 });
 
-app.post('/downvote', function(req, res) {
-    console.log("Someone tried to downvote something.");
-    console.log(req.body);
+app.put('/downvote', function(req, res) {
     var jokeIndex = req.body.id;
-    if (typeof jokes[jokeIndex].votes === 'undefined') {
-        console.log("Creating vote for this joke");
-        jokes[jokeIndex].votes = 0;
-    }
+    collection.findOneAndUpdate(
+        { _id: ObjectId(jokeIndex) },
+        { $inc: { "votes" : -1 }},
+        { returnNewDocument: true },
+        function(err, result) {
+            result.value.votes--;
+            res.send(result.value);
+        }
+    );
+});
 
-    jokes[jokeIndex].votes--;
+/* This page was to populate some jokes into the database */
+// app.get('/admin', function(req, res) {
+//
+//     console.log('Attempting to add into database.');
+//     mongodb.connect(uri, function(err, db) {
+//         var collection = db.collection('jokes');
+//         collection.insertMany(jokes,
+//             function(err, results){
+//                 res.send(results);
+//                 db.close();
+//             }
+//         );
+//     });
+// });
 
-    res.send(jokes[jokeIndex]);
+app.get('/updatejokes', function(req, res) {
+
+    res.sendFile(__dirname + '/static/updateJokes.html');
+});
+
+app.post('/createjoke', function(req, res) {
+
+    collection.insertOne(req.body,
+        function(err, results){
+            res.send(results);
+        }
+    );
+});
+
+app.get('/alljokes', function(req, res) {
+    collection.find().toArray(
+        function(err, resultArray) {
+            res.send(resultArray)
+        }
+    );
+});
+
+app.delete('/deletejoke', function(req, res) {
+    collection.deleteOne({_id: ObjectId(req.body.id)},
+        function(err, results){
+            res.send(results);
+        }
+    );
 });
